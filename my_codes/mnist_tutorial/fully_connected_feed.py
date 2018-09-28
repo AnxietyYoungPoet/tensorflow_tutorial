@@ -28,7 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.examples.tutorials.mnist import mnist
+import mnist
 
 # Basic model parameters as external flags.
 FLAGS = None
@@ -216,7 +216,8 @@ def run_training():
 
 
 def main(_):
-  FLAGS.log_dir = 'D:/learning/Python_learning/Python/TensorFlow/my_codes/mnist_tutorial/data'
+  FLAGS.log_dir = 'D:/learning/git/tensorflow_tutorial/my_codes/mnist_tutorial/log'
+  FLAGS.input_data_dir = 'D:/learning/git/tensorflow_tutorial/MNIST_data'
   if tf.gfile.Exists(FLAGS.log_dir):
     tf.gfile.DeleteRecursively(FLAGS.log_dir)
   tf.gfile.MakeDirs(FLAGS.log_dir)
