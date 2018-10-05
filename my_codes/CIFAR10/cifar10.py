@@ -56,6 +56,8 @@ tf.app.flags.DEFINE_string('data_dir', './data/',
                            """Path to the CIFAR-10 data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False,
                             """Train the model using fp16.""")
+tf.app.flags.DEFINE_float('momentum', 0.9,
+                            """Train the model using fp16.""")
 
 # Global constants describing the CIFAR-10 data set.
 IMAGE_SIZE = cifar10_input.IMAGE_SIZE
@@ -186,7 +188,7 @@ def inputs(eval_data):
   return images, labels
 
 
-def inference(images):
+def inference(images, training):
   """Build the CIFAR-10 model.
 
   Args:
@@ -201,73 +203,109 @@ def inference(images):
   # by replacing all instances of tf.get_variable() with tf.Variable().
   #
   # conv1
+  # with tf.variable_scope('conv1') as scope:
+  #   kernel = _variable_with_weight_decay('weights',
+  #                                        shape=[5, 5, 3, 64],
+  #                                        stddev=5e-2,
+  #                                        wd=None)
+  #   conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
+  #   biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
+  #   pre_activation = tf.nn.bias_add(conv, biases)
+  #   conv1 = tf.nn.relu(pre_activation, name=scope.name)
+  #   _activation_summary(conv1)
   with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[5, 5, 3, 64],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
+    conv1 = tf.layers.conv2d(
+      images, 64, 3, 1, 'same', name='conv1',
+      kernel_initializer=tf.contrib.layers.xavier_initializer())
+    normed1 = tf.layers.batch_normalization(
+      conv1, momentum=FLAGS.momentum, name='normed1', training=training)
+    relu1 = tf.nn.relu(normed1, name='relu1')
+    _activation_summary(relu1)
+
 
   # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-                         padding='SAME', name='pool1')
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm1')
+  # pool1 = tf.layers.max_pooling2d(relu1, 3, 2, 'same', name='pool1')
+  # pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
+  #                        padding='SAME', name='pool1')
+  # # norm1
+  # norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+  #                   name='norm1')
 
   # conv2
+  # with tf.variable_scope('conv2') as scope:
+  #   kernel = _variable_with_weight_decay('weights',
+  #                                        shape=[5, 5, 64, 64],
+  #                                        stddev=5e-2,
+  #                                        wd=None)
+  #   conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
+  #   biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
+  #   pre_activation = tf.nn.bias_add(conv, biases)
+  #   conv2 = tf.nn.relu(pre_activation, name=scope.name)
+    # _activation_summary(conv2)
   with tf.variable_scope('conv2') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[5, 5, 64, 64],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv2 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv2)
+    conv2 = tf.layers.conv2d(
+      relu1, 64, 3, 1, 'same', name='conv2',
+      kernel_initializer=tf.contrib.layers.xavier_initializer())
+    normed2 = tf.layers.batch_normalization(
+      conv2, momentum=FLAGS.momentum, name='normed2', training=training)
+    relu2 = tf.nn.relu(normed2, name='relu2')
+    _activation_summary(relu2)
 
   # norm2
-  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm2')
+  # norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+  #                   name='norm2')
   # pool2
-  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
-                         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
+  pool2 = tf.layers.max_pooling2d(relu2, 3, 2, 'same', name='pool1')
+  # pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
+  #                        strides=[1, 2, 2, 1], padding='SAME', name='pool2')
 
   # local3
   with tf.variable_scope('local3') as scope:
     # Move everything into depth so we can perform a single matrix multiply.
     reshape = tf.reshape(pool2, [images.get_shape().as_list()[0], -1])
-    dim = reshape.get_shape()[1].value
-    weights = _variable_with_weight_decay('weights', shape=[dim, 384],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
-    _activation_summary(local3)
+    fc3 = tf.layers.dense(
+      reshape, 384, name='fc3',
+      kernel_initializer=tf.contrib.layers.xavier_initializer())
+    normed3 = tf.layers.batch_normalization(
+      fc3, momentum=FLAGS.momentum, name='normed3', training=training)
+    relu3 = tf.nn.relu(normed3, name='relu3')
+    _activation_summary(relu3)
+    # dim = reshape.get_shape()[1].value
+    # weights = _variable_with_weight_decay('weights', shape=[dim, 384],
+    #                                       stddev=0.04, wd=0.004)
+    # biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
+    # local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
+    # _activation_summary(local3)
 
   # local4
   with tf.variable_scope('local4') as scope:
-    weights = _variable_with_weight_decay('weights', shape=[384, 192],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    _activation_summary(local4)
+    fc4 = tf.layers.dense(
+      relu3, 192, name='fc4',
+      kernel_initializer=tf.contrib.layers.xavier_initializer())
+    normed4 = tf.layers.batch_normalization(
+      fc4, momentum=FLAGS.momentum, name='normed4', training=training)
+    relu4 = tf.nn.relu(normed4, name='relu4')
+    _activation_summary(relu4)
+    # weights = _variable_with_weight_decay('weights', shape=[384, 192],
+    #                                       stddev=0.04, wd=0.004)
+    # biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
+    # local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
+    # _activation_summary(local4)
 
   # linear layer(WX + b),
   # We don't apply softmax here because
   # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
   # and performs the softmax internally for efficiency.
   with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
-                                          stddev=1/192.0, wd=None)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                              tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
+    softmax_linear = tf.layers.dense(
+      relu4, NUM_CLASSES, name='softmax',
+      kernel_initializer=tf.contrib.layers.xavier_initializer())
     _activation_summary(softmax_linear)
+    # weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
+    #                                       stddev=1/192.0, wd=None)
+    # biases = _variable_on_cpu('biases', [NUM_CLASSES],
+    #                           tf.constant_initializer(0.0))
+    # softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
 
   return softmax_linear
 
@@ -293,7 +331,8 @@ def loss(logits, labels):
 
   # The total loss is defined as the cross entropy loss plus all of the weight
   # decay terms (L2 loss).
-  return tf.add_n(tf.get_collection('losses'), name='total_loss')
+  # return tf.add_n(tf.get_collection('losses'), name='total_loss')
+  return cross_entropy_mean
 
 
 def _add_loss_summaries(total_loss):
@@ -341,40 +380,44 @@ def train(total_loss, global_step):
   decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
 
   # Decay the learning rate exponentially based on the number of steps.
-  lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
-                                  global_step,
-                                  decay_steps,
-                                  LEARNING_RATE_DECAY_FACTOR,
-                                  staircase=True)
-  tf.summary.scalar('learning_rate', lr)
+  # lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
+  #                                 global_step,
+  #                                 decay_steps,
+  #                                 LEARNING_RATE_DECAY_FACTOR,
+  #                                 staircase=True)
+  # tf.summary.scalar('learning_rate', lr)
 
   # Generate moving averages of all losses and associated summaries.
-  loss_averages_op = _add_loss_summaries(total_loss)
+  # loss_averages_op = _add_loss_summaries(total_loss)
 
   # Compute gradients.
-  with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.GradientDescentOptimizer(lr)
-    grads = opt.compute_gradients(total_loss)
+  opt = tf.train.AdamOptimizer(learning_rate=1e-3, name='adam')
+  extra_step = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  with tf.control_dependencies(extra_step):
+    train_op = opt.minimize(total_loss, global_step=global_step)
+  return train_op
+    # opt = tf.train.GradientDescentOptimizer(lr)
+    # grads = opt.compute_gradients(total_loss)
 
   # Apply gradients.
-  apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
+  # apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
   # Add histograms for trainable variables.
-  for var in tf.trainable_variables():
-    tf.summary.histogram(var.op.name, var)
+  # for var in tf.trainable_variables():
+  #   tf.summary.histogram(var.op.name, var)
 
   # Add histograms for gradients.
-  for grad, var in grads:
-    if grad is not None:
-      tf.summary.histogram(var.op.name + '/gradients', grad)
+  # for grad, var in grads:
+  #   if grad is not None:
+  #     tf.summary.histogram(var.op.name + '/gradients', grad)
 
   # Track the moving averages of all trainable variables.
-  variable_averages = tf.train.ExponentialMovingAverage(
-      MOVING_AVERAGE_DECAY, global_step)
-  with tf.control_dependencies([apply_gradient_op]):
-    variables_averages_op = variable_averages.apply(tf.trainable_variables())
+  # variable_averages = tf.train.ExponentialMovingAverage(
+  #     MOVING_AVERAGE_DECAY, global_step)
+  # with tf.control_dependencies([apply_gradient_op]):
+  #   variables_averages_op = variable_averages.apply(tf.trainable_variables())
 
-  return variables_averages_op
+  # return variables_averages_op
 
 
 def maybe_download_and_extract():
