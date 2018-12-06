@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_string('data_dir', './data/',
 tf.app.flags.DEFINE_boolean('use_fp16', False,
                             """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('momentum', 0.9,
-                            """Train the model using fp16.""")
+                          """Train the model using fp16.""")
 
 # Global constants describing the CIFAR-10 data set.
 IMAGE_SIZE = cifar10_input.IMAGE_SIZE
@@ -300,7 +300,7 @@ def inference(images, training):
     softmax_linear = tf.layers.dense(
       relu4, NUM_CLASSES, name='softmax',
       kernel_initializer=tf.contrib.layers.xavier_initializer())
-    _activation_summary(softmax_linear)
+    # _activation_summary(softmax_linear)
     # weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
     #                                       stddev=1/192.0, wd=None)
     # biases = _variable_on_cpu('biases', [NUM_CLASSES],
